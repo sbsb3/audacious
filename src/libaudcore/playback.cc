@@ -245,9 +245,12 @@ static void end_cb()
     }
     else
     {
-        // if 10 songs in a row have failed, or if the entire playlist
-        // (for playlists less than 10 songs) has failed, stop trying
-        if (failed_entries < aud::min(playlist.n_entries(), 10))
+        // if too many songs in a row have failed, or if the entire playlist
+        // has failed, stop trying; 0 means no consecutive-failure cap
+        int limit = aud_get_int("max_playback_failures");
+        int n_entries = playlist.n_entries();
+        int stop_after = (limit <= 0) ? n_entries : aud::min(n_entries, limit);
+        if (failed_entries < stop_after)
             do_next();
         else
             do_stop();
@@ -375,9 +378,15 @@ static void finish_playback(aud::mutex::holder &)
         failed_entries++;
 
         if (pb_info.error_s)
-            aud_ui_show_error(str_printf(_("Error playing %s:\n%s"),
-                                         (const char *)pb_info.filename,
-                                         (const char *)pb_info.error_s));
+        {
+            StringBuf msg = str_printf(_("Error playing %s:\n%s"),
+                                       (const char *)pb_info.filename,
+                                       (const char *)pb_info.error_s);
+            if (aud_get_bool("no_playback_error_dialog"))
+                AUDERR("%s\n", (const char *)msg);
+            else
+                aud_ui_show_error(msg);
+        }
         else
             AUDERR("Playback finished with error.\n");
     }

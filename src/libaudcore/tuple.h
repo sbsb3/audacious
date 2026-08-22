@@ -114,6 +114,12 @@ public:
         FileCreated,  /* File creation datetime (Unix epoch) */
         FileModified, /* File modification datetime (Unix epoch) */
 
+        /* Appended at the end (rather than grouped with Bitrate/Channels/
+         * Codec/Quality above) so that inserting it doesn't shift the
+         * ordinal of every field after it and break ABI compatibility with
+         * already-built plugins. */
+        SampleRate, /* Sample rate in Hertz */
+
         n_fields
     };
 
@@ -189,7 +195,7 @@ public:
     void set_filename(const char * filename);
 
     /* Fills in format-related fields (specifically Codec, Quality,
-     * and Bitrate).  Plugins should use this function instead of setting
+     * Bitrate, and SampleRate).  Plugins should use this function instead of setting
      * these fields individually to allow a consistent style across file
      * formats.  <format> should be a brief description such as "Ogg Vorbis",
      * "MPEG-1 layer 3", "Audio CD", and so on.  <samplerate> is in Hertz.

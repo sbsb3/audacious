@@ -157,6 +157,8 @@ static const struct
     {"file-created", Tuple::DateTime, -1},
     {"file-modified", Tuple::DateTime, -1},
 
+    {"samplerate", Tuple::Int, -1},
+
     /* fallbacks */
     {nullptr, Tuple::String, -1},
     {nullptr, Tuple::String, -1},
@@ -207,6 +209,7 @@ static const FieldDictEntry field_dict[] = {
     {"performer", Tuple::Performer},
     {"publisher", Tuple::Publisher},
     {"quality", Tuple::Quality},
+    {"samplerate", Tuple::SampleRate},
     {"segment-end", Tuple::EndTime},
     {"segment-start", Tuple::StartTime},
     {"subsong-id", Tuple::Subtune},
@@ -609,6 +612,9 @@ EXPORT void Tuple::set_format(const char * format, int chans, int rate,
 
     if (buf.len())
         set_str(Quality, buf);
+
+    if (rate > 0)
+        set_int(SampleRate, rate);
 
     if (brate > 0)
         set_int(Bitrate, brate);

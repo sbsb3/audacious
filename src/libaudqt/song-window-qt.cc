@@ -22,6 +22,7 @@
 
 #include <QAbstractListModel>
 #include <QCheckBox>
+#include <QColor>
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QFrame>
@@ -77,10 +78,65 @@ static bool is_queued(int entry)
     return queued >= 0;
 }
 
+/* Formats a sample rate in Hertz as a compact string, e.g. 44100 -> "44.1
+ * kHz".  Returns an empty string if <hz> is not a valid rate (this happens
+ * when the decoder plugin for a given track doesn't report one). */
+static QString format_rate(int hz)
+{
+    if (hz <= 0)
+        return QString();
+
+    double khz = hz / 1000.0;
+    if (hz % 1000 == 0)
+        return QString("%1 kHz").arg((int)khz);
+    return QString::number(khz, 'f', 1) + " kHz";
+}
+
+/* Deterministic string hash (FNV-1a).  Deliberately not QString's qHash(),
+ * which uses a randomized per-process seed and would give different colors
+ * on every run. */
+static quint32 stable_hash(const QString & key)
+{
+    QByteArray utf8 = key.toUtf8();
+    quint32 h = 2166136261u;
+    for (unsigned char c : utf8)
+    {
+        h ^= c;
+        h *= 16777619u;
+    }
+    return h;
+}
+
+/* Assigns each distinct string (artist name, sample rate, ...) its own
+ * color, spread across hue/saturation/lightness together so that names
+ * which are alphabetically close don't collide on a similar hue. */
+static QColor name_color(const QString & key)
+{
+    if (key.isEmpty())
+        return QColor();
+
+    quint32 h = stable_hash(key.toLower());
+    qreal hue = (h % 360) / 360.0;
+    qreal sat = 0.50 + ((h >> 8) % 100) / 100.0 * 0.30;
+    qreal light = 0.62 + ((h >> 16) % 100) / 100.0 * 0.20;
+    return QColor::fromHslF(hue, sat, light);
+}
+
+/* Gradient color for a row's position within the currently filtered list,
+ * so the entry-number column reads as a smooth scale from top to bottom. */
+static QColor index_color(int row, int row_count)
+{
+    qreal t = row_count > 1 ? (qreal)row / (row_count - 1) : 0.0;
+    qreal hue = (240.0 - 240.0 * t) / 360.0;
+    return QColor::fromHslF(hue, 0.65, 0.55);
+}
+
 struct PlaylistEntry
 {
     int index;
     QString title;
+    QString artist;
+    QString samplerate;
 };
 
 class SongListModel : public QAbstractListModel
@@ -89,6 +145,7 @@ public:
     enum
     {
         ColumnEntry,
+        ColumnSampleRate,
         ColumnTitle,
         NColumns
     };
@@ -140,11 +197,37 @@ QVariant SongListModel::data(const QModelIndex & index, int role) const
 
         if (index.column() == ColumnEntry)
             return entry.index;
+        if (index.column() == ColumnSampleRate)
+            return entry.samplerate;
         if (index.column() == ColumnTitle)
             return entry.title;
     }
-    else if (role == Qt::TextAlignmentRole && index.column() == ColumnEntry)
+    else if (role == Qt::TextAlignmentRole &&
+             (index.column() == ColumnEntry || index.column() == ColumnSampleRate))
         return int(Qt::AlignRight | Qt::AlignVCenter);
+    else if (role == Qt::ForegroundRole)
+    {
+        PlaylistEntry entry = m_filteredTuples.value(index.row());
+
+        if (index.column() == ColumnEntry)
+        {
+            QColor c = index_color(index.row(), m_rows);
+            if (c.isValid())
+                return c;
+        }
+        else if (index.column() == ColumnSampleRate)
+        {
+            QColor c = name_color(entry.samplerate);
+            if (c.isValid())
+                return c;
+        }
+        else if (index.column() == ColumnTitle)
+        {
+            QColor c = name_color(entry.artist);
+            if (c.isValid())
+                return c;
+        }
+    }
 
     return QVariant();
 }
@@ -182,7 +265,9 @@ void SongListModel::update(const QString & filter)
         {
             PlaylistEntry localEntry = {
                 .index = i + 1,
-                .title = title
+                .title = title,
+                .artist = QString(playlistTuple.get_str(Tuple::Artist)),
+                .samplerate = format_rate(playlistTuple.get_int(Tuple::SampleRate))
             };
             filteredTuples.append(localEntry);
         }
@@ -342,6 +427,9 @@ SongsWindow::SongsWindow(QWidget * parent) : QDialog(parent)
     header->setSectionResizeMode(SongListModel::ColumnEntry,
                                  QHeaderView::Interactive);
     header->resizeSection(SongListModel::ColumnEntry, audqt::to_native_dpi(50));
+    header->setSectionResizeMode(SongListModel::ColumnSampleRate,
+                                 QHeaderView::Interactive);
+    header->resizeSection(SongListModel::ColumnSampleRate, audqt::to_native_dpi(60));
     QObject::connect(m_treeview.selectionModel(),
                      &QItemSelectionModel::selectionChanged,
                      [this](const QItemSelection & selected) {

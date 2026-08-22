@@ -31,6 +31,7 @@
 #include <QKeyEvent>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMenu>
 #include <QPointer>
 #include <QPushButton>
 #include <QTreeView>
@@ -156,6 +157,12 @@ public:
     bool isSelectedQueued();
     void selectFirstRow(const QTreeView & treeView);
     void selectionChanged(const QItemSelection & selected);
+    bool hasRows() const { return m_rows > 0; }
+
+    /* Copies every currently filtered row (not just the selection) into
+     * <target>, preserving each entry's already-scanned metadata so the
+     * copy doesn't have to be rescanned. */
+    void copyFilteredToPlaylist(Playlist target) const;
 
 protected:
     int rowCount(const QModelIndex & parent) const override
@@ -302,6 +309,22 @@ void SongListModel::update(const QString & filter)
     m_in_update = false;
 }
 
+void SongListModel::copyFilteredToPlaylist(Playlist target) const
+{
+    auto source = Playlist::active_playlist();
+    Index<PlaylistAddItem> items;
+
+    for (const PlaylistEntry & e : m_filteredTuples)
+    {
+        int entry = e.index - 1;
+        items.append(source.entry_filename(entry),
+                      source.entry_tuple(entry, Playlist::NoWait).ref(),
+                      source.entry_decoder(entry, Playlist::NoWait));
+    }
+
+    target.insert_items(target.n_entries(), std::move(items), false);
+}
+
 void SongListModel::selectFirstRow(const QTreeView & treeView)
 {
     QModelIndex rootIndex = treeView.rootIndex();
@@ -342,7 +365,7 @@ private:
     QTreeView m_treeview;
     QLineEdit m_filterEdit;
     QCheckBox m_closeAfterJump;
-    QPushButton m_queueAndUnqueueButton, m_jumpButton;
+    QPushButton m_queueAndUnqueueButton, m_jumpButton, m_copyButton;
 
     const HookReceiver<SongsWindow, Playlist::UpdateLevel> //
         update_hook{"playlist update", this, &SongsWindow::updatePlaylist};
@@ -354,6 +377,35 @@ private:
         QString filter = m_filterEdit.text();
         m_songListModel.update(filter);
         m_songListModel.selectFirstRow(m_treeview);
+        m_copyButton.setEnabled(m_songListModel.hasRows());
+    }
+
+    void showCopyMenu()
+    {
+        QMenu menu(&m_copyButton);
+
+        QAction * newAction = menu.addAction(translate_str(N_("_New Playlist")));
+        QObject::connect(newAction, &QAction::triggered, [this]() {
+            m_songListModel.copyFilteredToPlaylist(Playlist::new_playlist());
+        });
+
+        int n_playlists = Playlist::n_playlists();
+        if (n_playlists > 0)
+        {
+            menu.addSeparator();
+            for (int i = 0; i < n_playlists; i++)
+            {
+                QAction * action =
+                    menu.addAction(QString(Playlist::by_index(i).get_title()));
+                QObject::connect(action, &QAction::triggered, [this, i]() {
+                    Playlist target = Playlist::by_index(i);
+                    if (target.exists())
+                        m_songListModel.copyFilteredToPlaylist(target);
+                });
+            }
+        }
+
+        menu.exec(m_copyButton.mapToGlobal(QPoint(0, m_copyButton.height())));
     }
 
     void updatePlaylist(Playlist::UpdateLevel level)
@@ -457,6 +509,8 @@ SongsWindow::SongsWindow(QWidget * parent) : QDialog(parent)
     QDialogButtonBox * bbox = new QDialogButtonBox(QDialogButtonBox::Close);
     bbox->addButton(&m_queueAndUnqueueButton, QDialogButtonBox::ApplyRole);
     m_queueAndUnqueueButton.setText(translate_str(N_("_Queue")));
+    bbox->addButton(&m_copyButton, QDialogButtonBox::ActionRole);
+    m_copyButton.setText(translate_str(N_("Cop_y to Playlist")));
     bbox->addButton(&m_jumpButton, QDialogButtonBox::AcceptRole);
     m_jumpButton.setText(translate_str(N_("_Jump")));
     m_jumpButton.setIcon(QIcon::fromTheme("go-jump"));
@@ -476,6 +530,10 @@ SongsWindow::SongsWindow(QWidget * parent) : QDialog(parent)
     QObject::connect(&m_queueAndUnqueueButton, &QPushButton::clicked, [this]() {
         this->m_songListModel.toggleQueueSelected();
         this->updateQueueButton();
+    });
+
+    QObject::connect(&m_copyButton, &QPushButton::clicked, [this]() {
+        this->showCopyMenu();
     });
 
     QObject::connect(&m_jumpButton, &QPushButton::clicked, [this]() {

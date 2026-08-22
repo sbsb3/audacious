@@ -38,7 +38,7 @@ static void activate_cb (void * data, void *);
 
 static JumpToTrackCache cache;
 static const KeywordMatches * search_matches;
-static GtkWidget * treeview, * filter_entry, * queue_button, * jump_button;
+static GtkWidget * treeview, * filter_entry, * queue_button, * jump_button, * copy_button;
 static bool watching = false;
 
 /* ==== coloring ====
@@ -221,6 +221,75 @@ static void do_queue (void *)
     update_queue_button (entry);
 }
 
+/* Copies every currently filtered row (not just the selection) into
+ * <target>, preserving each entry's already-scanned metadata so the copy
+ * doesn't have to be rescanned. */
+static void copy_matches_to_playlist (Playlist target)
+{
+    g_return_if_fail (search_matches);
+
+    auto source = Playlist::active_playlist ();
+    Index<PlaylistAddItem> items;
+
+    for (const KeywordMatch & match : * search_matches)
+    {
+        int entry = match.entry;
+        items.append (source.entry_filename (entry),
+         source.entry_tuple (entry, Playlist::NoWait).ref (),
+         source.entry_decoder (entry, Playlist::NoWait));
+    }
+
+    target.insert_items (target.n_entries (), std::move (items), false);
+}
+
+static void copy_menu_new_cb (GtkMenuItem *, void *)
+{
+    copy_matches_to_playlist (Playlist::new_playlist ());
+}
+
+static void copy_menu_existing_cb (GtkMenuItem *, void * data)
+{
+    Playlist target = Playlist::by_index (GPOINTER_TO_INT (data));
+    if (target.exists ())
+        copy_matches_to_playlist (target);
+}
+
+static void do_copy (void *)
+{
+    g_return_if_fail (copy_button);
+
+    GtkWidget * menu = gtk_menu_new ();
+
+    GtkWidget * new_item = gtk_menu_item_new_with_mnemonic (_("_New Playlist"));
+    g_signal_connect (new_item, "activate", (GCallback) copy_menu_new_cb, nullptr);
+    gtk_menu_shell_append ((GtkMenuShell *) menu, new_item);
+
+    int n_playlists = Playlist::n_playlists ();
+    if (n_playlists > 0)
+    {
+        gtk_menu_shell_append ((GtkMenuShell *) menu, gtk_separator_menu_item_new ());
+
+        for (int i = 0; i < n_playlists; i ++)
+        {
+            String title = Playlist::by_index (i).get_title ();
+            GtkWidget * item = gtk_menu_item_new_with_label (title);
+            g_signal_connect (item, "activate", (GCallback) copy_menu_existing_cb,
+             GINT_TO_POINTER (i));
+            gtk_menu_shell_append ((GtkMenuShell *) menu, item);
+        }
+    }
+
+    g_signal_connect (menu, "selection-done", (GCallback) gtk_widget_destroy, nullptr);
+    gtk_widget_show_all (menu);
+
+#ifdef USE_GTK3
+    gtk_menu_popup_at_widget ((GtkMenu *) menu, copy_button,
+     GDK_GRAVITY_NORTH_WEST, GDK_GRAVITY_SOUTH_WEST, nullptr);
+#else
+    gtk_menu_popup ((GtkMenu *) menu, nullptr, nullptr, nullptr, nullptr, 0, GDK_CURRENT_TIME);
+#endif
+}
+
 static void selection_changed ()
 {
     int entry = get_selected_entry ();
@@ -259,6 +328,9 @@ static void fill_list ()
 
     audgui_list_delete_rows (treeview, 0, audgui_list_row_count (treeview));
     audgui_list_insert_rows (treeview, 0, search_matches->len ());
+
+    if (copy_button)
+        gtk_widget_set_sensitive (copy_button, search_matches->len () > 0);
 
     if (search_matches->len () >= 1)
     {
@@ -466,6 +538,10 @@ static GtkWidget * create_window ()
     /* queue button */
     queue_button = audgui_button_new (_("_Queue"), nullptr, do_queue, nullptr);
     gtk_container_add ((GtkContainer *) bbox, queue_button);
+
+    /* copy to playlist button */
+    copy_button = audgui_button_new (_("Cop_y to Playlist"), nullptr, do_copy, nullptr);
+    gtk_container_add ((GtkContainer *) bbox, copy_button);
 
     /* close button */
     GtkWidget * close = audgui_button_new (_("_Close"), "window-close",

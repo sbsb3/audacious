@@ -92,6 +92,9 @@ void audgui_hide_prefs_window ();
 /* queue-manager.c */
 void audgui_queue_manager_show ();
 
+/* sort-by-fields.cc */
+void audgui_show_sort_by_fields (bool selected_only);
+
 /* urilist.c */
 void audgui_urilist_open (const char * list);
 void audgui_urilist_insert (Playlist playlist, int position, const char * list);

@@ -38,6 +38,10 @@ enum {
     AUDGUI_PRESET_BROWSER_WINDOW,
     AUDGUI_QUEUE_MANAGER_WINDOW,
     AUDGUI_URL_OPENER_WINDOW,
+
+    /* appended at the end (rather than kept in alphabetical order) so that
+     * inserting it doesn't shift the ordinal of every window after it */
+    AUDGUI_SORT_BY_FIELDS_WINDOW,
     AUDGUI_NUM_UNIQUE_WINDOWS
 };
 

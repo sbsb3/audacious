@@ -24,6 +24,7 @@ libaudgui_sources = [
   'queue-manager.cc',
   'scaled-image.cc',
   'settings-portal.cc',
+  'sort-by-fields.cc',
   'status.cc',
   'urilist.cc',
   'url-opener.cc',

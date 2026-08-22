@@ -53,7 +53,8 @@ static const char * const window_names[AUDGUI_NUM_UNIQUE_WINDOWS] = {
     "playlist_import_win",
     "preset_browser_win",
     "queue_manager_win",
-    "url_opener_win"
+    "url_opener_win",
+    "sort_by_fields_win"
 };
 
 static int init_count = 0;

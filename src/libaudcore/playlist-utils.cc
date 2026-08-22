@@ -71,7 +71,7 @@ static int tuple_compare_int(const Tuple & a, const Tuple & b,
                              Tuple::Field field)
 {
     auto at = a.get_value_type(field);
-    auto bt = a.get_value_type(field);
+    auto bt = b.get_value_type(field);
 
     if (at != Tuple::Int && at != Tuple::DateTime)
         return (bt != Tuple::Int && bt != Tuple::DateTime) ? 0 : -1;
@@ -208,6 +208,44 @@ EXPORT void Playlist::sort_selected(SortType scheme) const
         sort_selected_by_filename(filename_comparisons[scheme]);
     else if (tuple_comparisons[scheme])
         sort_selected_by_tuple(tuple_comparisons[scheme]);
+}
+
+/* Holds the keys for the in-progress custom sort; tuple_compare_by_keys()
+ * can't be a closure, since it must decay to a plain TupleCompareFunc. */
+static Index<Playlist::SortKey> s_custom_sort_keys;
+
+static int tuple_compare_by_keys(const Tuple & a, const Tuple & b)
+{
+    for (const Playlist::SortKey & key : s_custom_sort_keys)
+    {
+        auto type = Tuple::field_get_type(key.field);
+        int c = (type == Tuple::Int || type == Tuple::DateTime)
+                    ? tuple_compare_int(a, b, key.field)
+                    : tuple_compare_string(a, b, key.field);
+
+        if (c)
+            return key.descending ? -c : c;
+    }
+
+    return 0;
+}
+
+EXPORT void Playlist::sort_by_keys(const Index<SortKey> & keys) const
+{
+    s_custom_sort_keys.clear();
+    for (const SortKey & key : keys)
+        s_custom_sort_keys.append(key);
+
+    sort_by_tuple(tuple_compare_by_keys);
+}
+
+EXPORT void Playlist::sort_selected_by_keys(const Index<SortKey> & keys) const
+{
+    s_custom_sort_keys.clear();
+    for (const SortKey & key : keys)
+        s_custom_sort_keys.append(key);
+
+    sort_selected_by_tuple(tuple_compare_by_keys);
 }
 
 /* FIXME: this considers empty fields as duplicates */

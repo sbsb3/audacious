@@ -85,6 +85,15 @@ public:
         n_sort_types
     };
 
+    /* A single key in a user-defined, multi-field sort order (see
+     * sort_by_keys()).  Fields are compared numerically if the field's
+     * value type is Int or DateTime, and as strings otherwise. */
+    struct SortKey
+    {
+        Tuple::Field field;
+        bool descending = false;
+    };
+
     /* Possible behaviors for entry_{decoder, tuple}. */
     enum GetMode
     {
@@ -309,6 +318,14 @@ public:
      * fail if metadata scanning is still in progress (or has been disabled). */
     void sort_by_title(StringCompareFunc compare) const;
 
+    /* Sorts the entries in a playlist according to an ordered chain of
+     * tuple fields (an ad hoc "custom sort" scheme, as opposed to the
+     * preset schemes in SortType).  Entries are compared key by key until
+     * one differs; ties are left in their previous relative order.  May
+     * fail if metadata scanning is still in progress (or has been
+     * disabled). */
+    void sort_by_keys(const Index<SortKey> & keys) const;
+
     /* Sorts only the selected entries in a playlist based on filename. */
     void sort_selected_by_filename(StringCompareFunc compare) const;
 
@@ -320,6 +337,10 @@ public:
      * string.  May fail if metadata scanning is still in progress (or has been
      * disabled). */
     void sort_selected_by_title(StringCompareFunc compare) const;
+
+    /* Sorts only the selected entries in a playlist according to an
+     * ordered chain of tuple fields.  See sort_by_keys(). */
+    void sort_selected_by_keys(const Index<SortKey> & keys) const;
 
     /* Reverses the order of the entries in a playlist. */
     void reverse_order() const;

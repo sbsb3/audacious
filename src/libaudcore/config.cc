@@ -92,6 +92,8 @@ static const char * const core_defaults[] = {
 
     /* playback */
     "album_shuffle", "FALSE",
+    "copy_skip_duplicates", "TRUE",
+    "copy_target_playlist", "Favorites",
     "max_playback_failures", "10",
     "no_playback_error_dialog", "FALSE",
     "no_playlist_advance", "FALSE",

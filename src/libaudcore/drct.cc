@@ -23,6 +23,7 @@
 #include "i18n.h"
 #include "interface.h"
 #include "internal.h"
+#include "multihash.h"
 #include "playlist-internal.h"
 #include "plugins-internal.h"
 #include "runtime.h"
@@ -227,6 +228,100 @@ EXPORT void aud_drct_pl_prev_album()
         playlist = Playlist::active_playlist();
 
     playlist.prev_album(aud_get_bool("repeat"));
+}
+
+/* Two entries are considered part of the same album if both the album title
+ * and the album artist (or track artist, if there is no album artist) match.
+ * Comparing the album title alone would merge e.g. every "Greatest Hits". */
+static bool same_album(const Tuple & a, const Tuple & b)
+{
+    String album = a.get_str(Tuple::Album);
+    if (!album || album != b.get_str(Tuple::Album))
+        return false;
+
+    String artist_a = a.get_str(Tuple::AlbumArtist);
+    String artist_b = b.get_str(Tuple::AlbumArtist);
+    if (!artist_a)
+        artist_a = a.get_str(Tuple::Artist);
+    if (!artist_b)
+        artist_b = b.get_str(Tuple::Artist);
+
+    return artist_a == artist_b;
+}
+
+static Playlist find_or_create_playlist(const char * title)
+{
+    int n_playlists = Playlist::n_playlists();
+    for (int i = 0; i < n_playlists; i++)
+    {
+        auto playlist = Playlist::by_index(i);
+        if (playlist.get_title() == title)
+            return playlist;
+    }
+
+    auto playlist = Playlist::new_playlist();
+    playlist.set_title(title);
+    return playlist;
+}
+
+EXPORT void aud_drct_pl_copy_playing_to_target(bool whole_album)
+{
+    String title = aud_get_str(nullptr, "copy_target_playlist");
+    if (!title[0])
+    {
+        AUDWARN("No copy target playlist is set.\n");
+        return;
+    }
+
+    Playlist source = Playlist::playing_playlist();
+    if (source == Playlist())
+        source = Playlist::active_playlist();
+
+    int pos = source.get_position();
+    if (pos < 0)
+        return;
+
+    Playlist target = find_or_create_playlist(title);
+    if (target == source)
+    {
+        AUDWARN("Not copying %s playlist into itself.\n", (const char *)title);
+        return;
+    }
+
+    SimpleHash<String, bool> existing;
+    if (aud_get_bool(nullptr, "copy_skip_duplicates"))
+    {
+        int n_target = target.n_entries();
+        for (int i = 0; i < n_target; i++)
+            existing.add(target.entry_filename(i), true);
+    }
+
+    Tuple ref_tuple = source.entry_tuple(pos, Playlist::NoWait);
+    Index<PlaylistAddItem> items;
+
+    int n_entries = source.n_entries();
+    for (int i = 0; i < n_entries; i++)
+    {
+        if (i != pos)
+        {
+            if (!whole_album)
+                continue;
+            if (!same_album(ref_tuple, source.entry_tuple(i, Playlist::NoWait)))
+                continue;
+        }
+
+        String filename = source.entry_filename(i);
+        if (existing.lookup(filename))
+            continue;
+
+        items.append(filename, source.entry_tuple(i, Playlist::NoWait),
+                     source.entry_decoder(i, Playlist::NoWait));
+    }
+
+    AUDINFO("Copying %d entries to %s.\n", items.len(), (const char *)title);
+
+    if (items.len())
+        target.insert_items(target.n_entries(), std::move(items), false);
 }
 
 static void add_list(Index<PlaylistAddItem> && items, int at, bool to_temp,

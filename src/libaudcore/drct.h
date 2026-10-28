@@ -101,6 +101,11 @@ void aud_drct_pl_next_album();
 void aud_drct_pl_prev();
 void aud_drct_pl_prev_album();
 
+/* Appends the current song (or, if <whole_album> is true, every entry in the
+ * same playlist belonging to the current song's album) to the playlist whose
+ * title is set in "copy_target_playlist", creating it if needed. */
+void aud_drct_pl_copy_playing_to_target(bool whole_album);
+
 void aud_drct_pl_add(const char * filename, int at);
 void aud_drct_pl_add_list(Index<PlaylistAddItem> && items, int at);
 void aud_drct_pl_open(const char * filename);
